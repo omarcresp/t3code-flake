@@ -1,15 +1,15 @@
 # t3code-flake
 
 [![Nix Flake](https://img.shields.io/badge/Nix-flake-5277C3?logo=nixos&logoColor=white)](https://nixos.org/)
-[![Platform](https://img.shields.io/badge/platform-x86__64--linux-6b7280)](https://github.com/omarcresp/t3code-flake)
+[![Platform](https://img.shields.io/badge/platform-linux%20%7C%20macOS-6b7280)](https://github.com/omarcresp/t3code-flake)
 
-A small, focused Nix flake that packages the upstream Linux AppImage for [T3 Code](https://github.com/pingdotgg/t3code).
+A small, focused Nix flake that packages the upstream release binaries for [T3 Code](https://github.com/pingdotgg/t3code) on Linux and macOS.
 
 This repo exposes both a package and an app so you can `nix run`, `nix build`, or consume it from another flake.
 
 ## Why This Flake
 
-- Reproducible packaging for the official T3 Code AppImage.
+- Reproducible packaging for the official T3 Code release artifacts.
 - Clean flake outputs for both package and runnable app workflows.
 
 ## Quick Start
@@ -43,7 +43,7 @@ nix profile install github:omarcresp/t3code-flake#t3-code
 
   outputs = { self, nixpkgs, t3code-flake, ... }:
     let
-      system = "x86_64-linux";
+      system = builtins.currentSystem;
     in
     {
       # NixOS example
@@ -68,10 +68,11 @@ nix profile install github:omarcresp/t3code-flake#t3-code
 
 | Output | Description |
 | --- | --- |
-| `packages.x86_64-linux.default` | Alias of `t3-code` package |
+| `packages.x86_64-linux.default` | Alias of Linux `t3-code` package |
 | `packages.x86_64-linux.t3-code` | Wrapped AppImage package |
-| `apps.x86_64-linux.default` | Alias of `t3-code` app |
-| `apps.x86_64-linux.t3-code` | Runnable app (`nix run`) |
+| `packages.x86_64-darwin.t3-code` | macOS Intel app bundle package |
+| `packages.aarch64-darwin.t3-code` | macOS Apple Silicon app bundle package |
+| `apps.<system>.t3-code` | Runnable app (`nix run`) for each supported system |
 
 Inspect outputs:
 
@@ -81,7 +82,9 @@ nix flake show github:omarcresp/t3code-flake
 
 ## Platform Support
 
-- `x86_64-linux` only (matches the packaged AppImage asset).
+- `x86_64-linux`
+- `x86_64-darwin`
+- `aarch64-darwin`
 
 ## Troubleshooting
 
