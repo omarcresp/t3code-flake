@@ -1,0 +1,80 @@
+name: Auto Update
+
+on:
+  schedule:
+    - cron: "0 */3 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: auto-update
+  cancel-in-progress: true
+
+jobs:
+  update:
+    timeout-minutes: 5
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ github.ref_name }}
+          fetch-depth: 1
+          sparse-checkout: |
+            flake.nix
+            update.sh
+
+      - name: Read latest release values
+        id: latest
+        run: |
+          set -euo pipefail
+          values="$(./update.sh)"
+
+          version="$(sed -n 's/^version = "\(.*\)";$/\1/p' <<<"${values}" | head -n1)"
+          hash="$(sed -n 's/^hash = "\(.*\)";$/\1/p' <<<"${values}" | head -n1)"
+
+          if [[ -z "${version}" || -z "${hash}" ]]; then
+            echo "Failed to parse version/hash from update.sh output."
+            echo "${values}"
+            exit 1
+          fi
+
+          current_version="$(sed -n 's/^[[:space:]]*version = "\(.*\)";$/\1/p' flake.nix | head -n1)"
+          if [[ "${current_version}" == "${version}" ]]; then
+            echo "changed=false" >>"${GITHUB_OUTPUT}"
+            exit 0
+          fi
+
+          echo "changed=true" >>"${GITHUB_OUTPUT}"
+          echo "version=${version}" >>"${GITHUB_OUTPUT}"
+          echo "hash=${hash}" >>"${GITHUB_OUTPUT}"
+
+      - name: Update flake.nix
+        if: steps.latest.outputs.changed == 'true'
+        run: |
+          set -euo pipefail
+          version='${{ steps.latest.outputs.version }}'
+          hash='${{ steps.latest.outputs.hash }}'
+
+          sed -i -E "s/version = \"[^\"]+\";/version = \"${version}\";/" flake.nix
+          sed -i -E "s|hash = \"[^\"]+\";|hash = \"${hash}\";|" flake.nix
+
+      - name: Commit and push changes
+        if: steps.latest.outputs.changed == 'true'
+        run: |
+          set -euo pipefail
+          if git diff --quiet -- flake.nix; then
+            echo "No update available."
+            exit 0
+          fi
+
+          version='${{ steps.latest.outputs.version }}'
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+          git add flake.nix
+          git commit -m "${version}"
+          git push

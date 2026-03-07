@@ -4,7 +4,7 @@ set -euo pipefail
 repo="pingdotgg/t3code"
 api_url="https://api.github.com/repos/${repo}/releases/latest"
 
-for cmd in curl jq nix; do
+for cmd in curl jq; do
   if ! command -v "${cmd}" >/dev/null 2>&1; then
     echo "Missing required command: ${cmd}" >&2
     exit 1
@@ -45,7 +45,14 @@ if [[ ! "${digest}" =~ ^sha256:[0-9a-fA-F]{64}$ ]]; then
 fi
 
 hex_hash="${digest#sha256:}"
-sri_hash="$(nix hash convert --hash-algo sha256 --from base16 --to sri "${hex_hash}")"
+if command -v nix >/dev/null 2>&1; then
+  sri_hash="$(nix hash convert --hash-algo sha256 --from base16 --to sri "${hex_hash}")"
+elif command -v xxd >/dev/null 2>&1 && command -v base64 >/dev/null 2>&1; then
+  sri_hash="sha256-$(printf '%s' "${hex_hash}" | xxd -r -p | base64 | tr -d '\n')"
+else
+  echo "Missing required command for SRI conversion. Install nix or xxd+base64." >&2
+  exit 1
+fi
 
 cat <<EOF
 # Update values for flake.nix

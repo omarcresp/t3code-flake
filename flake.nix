@@ -11,25 +11,44 @@
       system = "x86_64-linux";
       pkgs = import nixpkgs { inherit system; };
 
-      t3Code = pkgs.appimageTools.wrapType2 rec {
-        pname = "t3-code";
-        version = "0.0.3";
+      t3Code =
+        let
+          pname = "t3-code";
+          version = "0.0.3";
 
-        src = pkgs.fetchurl {
-          url = "https://github.com/pingdotgg/t3code/releases/download/v${version}/T3-Code-${version}-x86_64.AppImage";
-          hash = "sha256-1fKkfIFCLTutZBhPumqvo00PjmZO630wLnB9N5Ge5ZY=";
+          src = pkgs.fetchurl {
+            url = "https://github.com/pingdotgg/t3code/releases/download/v${version}/T3-Code-${version}-x86_64.AppImage";
+            hash = "sha256-1fKkfIFCLTutZBhPumqvo00PjmZO630wLnB9N5Ge5ZY=";
+          };
+
+          appimageContents = pkgs.appimageTools.extractType2 {
+            inherit pname version src;
+          };
+        in
+        pkgs.appimageTools.wrapType2 {
+          inherit pname version src;
+
+          extraPkgs = _pkgs: [ ];
+
+          extraInstallCommands = ''
+            install -Dm444 ${appimageContents}/t3-code-desktop.desktop \
+              $out/share/applications/t3-code.desktop
+            install -Dm444 ${appimageContents}/usr/share/icons/hicolor/1024x1024/apps/t3-code-desktop.png \
+              $out/share/icons/hicolor/1024x1024/apps/t3-code.png
+
+            substituteInPlace $out/share/applications/t3-code.desktop \
+              --replace-fail 'Exec=AppRun --no-sandbox %U' 'Exec=t3-code %U' \
+              --replace-fail 'Icon=t3-code-desktop' 'Icon=t3-code'
+          '';
+
+          meta = {
+            description = "T3 Code desktop app packaged from the upstream AppImage";
+            homepage = "https://github.com/pingdotgg/t3code";
+            license = pkgs.lib.licenses.mit;
+            platforms = [ "x86_64-linux" ];
+            mainProgram = "t3-code";
+          };
         };
-
-        extraPkgs = _pkgs: [ ];
-
-        meta = {
-          description = "T3 Code desktop app packaged from the upstream AppImage";
-          homepage = "https://github.com/pingdotgg/t3code";
-          license = pkgs.lib.licenses.mit;
-          platforms = [ "x86_64-linux" ];
-          mainProgram = "t3-code";
-        };
-      };
     in
     {
       packages.${system} = {
