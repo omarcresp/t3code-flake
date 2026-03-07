@@ -14,11 +14,11 @@
       t3Code =
         let
           pname = "t3-code";
-          version = "0.0.3";
+          version = "0.0.4";
 
           src = pkgs.fetchurl {
             url = "https://github.com/pingdotgg/t3code/releases/download/v${version}/T3-Code-${version}-x86_64.AppImage";
-            hash = "sha256-1fKkfIFCLTutZBhPumqvo00PjmZO630wLnB9N5Ge5ZY=";
+            hash = "sha256-HlkQ/uPLXHh2Duamrmhp31yQqnETawQ4Ru7kg2MmpVs=";
           };
 
           appimageContents = pkgs.appimageTools.extractType2 {
