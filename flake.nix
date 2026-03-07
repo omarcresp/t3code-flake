@@ -13,11 +13,11 @@
 
       t3Code = pkgs.appimageTools.wrapType2 rec {
         pname = "t3-code";
-        version = "0.0.2";
+        version = "0.0.3";
 
         src = pkgs.fetchurl {
           url = "https://github.com/pingdotgg/t3code/releases/download/v${version}/T3-Code-${version}-x86_64.AppImage";
-          hash = "sha256-ZtMHvAV1gEjHQcqHjeShcgegey6iQ2DUMD6HNeCZHyU=";
+          hash = "sha256-1fKkfIFCLTutZBhPumqvo00PjmZO630wLnB9N5Ge5ZY=";
         };
 
         extraPkgs = _pkgs: [ ];
