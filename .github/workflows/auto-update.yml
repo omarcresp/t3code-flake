@@ -26,17 +26,16 @@ jobs:
             flake.nix
             update.sh
 
-      - name: Read latest release values
+      - name: Read latest release and update flake.nix
         id: latest
         run: |
           set -euo pipefail
           values="$(./update.sh)"
 
           version="$(sed -n 's/^version = "\(.*\)";$/\1/p' <<<"${values}" | head -n1)"
-          hash="$(sed -n 's/^hash = "\(.*\)";$/\1/p' <<<"${values}" | head -n1)"
 
-          if [[ -z "${version}" || -z "${hash}" ]]; then
-            echo "Failed to parse version/hash from update.sh output."
+          if [[ -z "${version}" ]]; then
+            echo "Failed to parse version from update.sh output."
             echo "${values}"
             exit 1
           fi
@@ -49,17 +48,22 @@ jobs:
 
           echo "changed=true" >>"${GITHUB_OUTPUT}"
           echo "version=${version}" >>"${GITHUB_OUTPUT}"
-          echo "hash=${hash}" >>"${GITHUB_OUTPUT}"
 
-      - name: Update flake.nix
-        if: steps.latest.outputs.changed == 'true'
-        run: |
-          set -euo pipefail
-          version='${{ steps.latest.outputs.version }}'
-          hash='${{ steps.latest.outputs.hash }}'
-
+          # Update version in flake.nix
           sed -i -E "s/version = \"[^\"]+\";/version = \"${version}\";/" flake.nix
-          sed -i -E "s|hash = \"[^\"]+\";|hash = \"${hash}\";|" flake.nix
+
+          # Update per-platform url and hash in flake.nix
+          for system in x86_64-linux x86_64-darwin aarch64-darwin; do
+            url="$(awk "/${system} = \{/,/\}/" <<<"${values}" | sed -n 's/^[[:space:]]*url = "\(.*\)";$/\1/p')"
+            hash="$(awk "/${system} = \{/,/\}/" <<<"${values}" | sed -n 's/^[[:space:]]*hash = "\(.*\)";$/\1/p')"
+
+            awk -v sys="${system}" -v new_url="${url}" -v new_hash="${hash}" '
+              $0 ~ sys " = \\{" { in_block=1 }
+              in_block && /url = "/ { sub(/url = "[^"]*"/, "url = \"" new_url "\"") }
+              in_block && /hash = "/ { sub(/hash = "[^"]*"/, "hash = \"" new_hash "\""); in_block=0 }
+              { print }
+            ' flake.nix > flake.nix.tmp && mv flake.nix.tmp flake.nix
+          done
 
       - name: Commit and push changes
         if: steps.latest.outputs.changed == 'true'
