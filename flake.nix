@@ -10,20 +10,20 @@
     let
       lib = nixpkgs.lib;
       pname = "t3-code";
-      version = "0.0.14";
+      version = "0.0.15";
 
       sources = {
         x86_64-linux = {
-          url = "https://github.com/pingdotgg/t3code/releases/download/v0.0.14/T3-Code-0.0.14-x86_64.AppImage";
-          hash = "sha256-miaZTF3XMQws5E0VlIt1ioS3Y71Vb2cF35pl2Rz0VwA=";
+          url = "https://github.com/pingdotgg/t3code/releases/download/v0.0.15/T3-Code-0.0.15-x86_64.AppImage";
+          hash = "sha256-Z8y7SWH55+ZC7cRpgo0cdG273rbDiFS3pXQt3up7sDg=";
         };
         x86_64-darwin = {
-          url = "https://github.com/pingdotgg/t3code/releases/download/v0.0.14/T3-Code-0.0.14-x64.zip";
-          hash = "sha256-pH4Tzz3wIFmf7e/hErssaVxn554ME5206/QQ7OzZFco=";
+          url = "https://github.com/pingdotgg/t3code/releases/download/v0.0.15/T3-Code-0.0.15-x64.zip";
+          hash = "sha256-r/q3D2b1Z/ePffgJ752eLZEUcW7Bbn2V9jqrTyX0l/0=";
         };
         aarch64-darwin = {
-          url = "https://github.com/pingdotgg/t3code/releases/download/v0.0.14/T3-Code-0.0.14-arm64.zip";
-          hash = "sha256-LbWtv9zbWKXfF4XDmtw2EP83ftP2i9qq2PzvSAObAhA=";
+          url = "https://github.com/pingdotgg/t3code/releases/download/v0.0.15/T3-Code-0.0.15-arm64.zip";
+          hash = "sha256-9pEH5br0vCGRRknSup0NvKPt7p0Hnk/kYAwRjOOpmQ4=";
         };
       };
 
