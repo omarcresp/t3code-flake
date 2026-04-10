@@ -53,16 +53,16 @@
           extraPkgs = _pkgs: [ ];
 
           extraInstallCommands = ''
-            install -Dm444 ${appimageContents}/t3-code-desktop.desktop \
+            install -Dm444 ${appimageContents}/t3code.desktop \
               $out/share/applications/t3-code.desktop
-            install -Dm444 ${appimageContents}/usr/share/icons/hicolor/1024x1024/apps/t3-code-desktop.png \
+            install -Dm444 ${appimageContents}/usr/share/icons/hicolor/1024x1024/apps/t3code.png \
               $out/share/pixmaps/t3-code.png
-            install -Dm444 ${appimageContents}/usr/share/icons/hicolor/1024x1024/apps/t3-code-desktop.png \
+            install -Dm444 ${appimageContents}/usr/share/icons/hicolor/1024x1024/apps/t3code.png \
               $out/share/icons/hicolor/1024x1024/apps/t3-code.png
 
             substituteInPlace $out/share/applications/t3-code.desktop \
               --replace-fail 'Exec=AppRun --no-sandbox %U' 'Exec=t3-code %U' \
-              --replace-fail 'Icon=t3-code-desktop' "Icon=$out/share/pixmaps/t3-code.png"
+              --replace-fail 'Icon=t3code' "Icon=$out/share/pixmaps/t3-code.png"
           '';
 
           meta = mkMeta system;
