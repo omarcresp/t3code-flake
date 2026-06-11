@@ -12,17 +12,16 @@
       pname = "t3-code";
       version = "0.0.27";
 
+      mkUrl =
+        asset: "https://github.com/pingdotgg/t3code/releases/download/v${version}/T3-Code-${version}-${asset}";
+
       sources = {
         x86_64-linux = {
-          url = "https://github.com/pingdotgg/t3code/releases/download/v0.0.27/T3-Code-0.0.27-x86_64.AppImage";
+          url = mkUrl "x86_64.AppImage";
           hash = "sha256-ALkm7wSVbDlZR7TWVag3NRbP1kvGJQqmpR1mmZvSCAU=";
         };
-        x86_64-darwin = {
-          url = "https://github.com/pingdotgg/t3code/releases/download/v0.0.27/T3-Code-0.0.27-x64.zip";
-          hash = "sha256-d1OT1tH6tGid5MS2T2a1X/xqxDapv5M2rKl/VteUioc=";
-        };
         aarch64-darwin = {
-          url = "https://github.com/pingdotgg/t3code/releases/download/v0.0.27/T3-Code-0.0.27-arm64.zip";
+          url = mkUrl "arm64.zip";
           hash = "sha256-2teOphbCdl1mQHFvDUK+qVdBdwHD/9uu/lY4VmRf1hU=";
         };
       };
@@ -43,26 +42,104 @@
         let
           system = pkgs.stdenv.hostPlatform.system;
           src = pkgs.fetchurl sources.${system};
-          appimageContents = pkgs.appimageTools.extractType2 {
+        in
+        pkgs.stdenv.mkDerivation {
+          inherit pname version;
+
+          src = pkgs.appimageTools.extract {
             inherit pname version src;
           };
-        in
-        pkgs.appimageTools.wrapType2 {
-          inherit pname version src;
 
-          extraPkgs = _pkgs: [ ];
+          nativeBuildInputs = [
+            pkgs.autoPatchelfHook
+            pkgs.makeWrapper
+            pkgs.wrapGAppsHook3
+          ];
 
-          extraInstallCommands = ''
-            install -Dm444 ${appimageContents}/t3code.desktop \
-              $out/share/applications/t3-code.desktop
+          # Electron runtime dependencies, mirroring
+          # nixpkgs pkgs/development/tools/electron/binary/generic.nix
+          # (minus pipewire: only used for Wayland screen sharing and it
+          # drags gstreamer/ffmpeg/python into the closure, ~200 MiB)
+          buildInputs = with pkgs; [
+            alsa-lib
+            at-spi2-atk
+            cairo
+            cups
+            dbus
+            expat
+            gdk-pixbuf
+            glib
+            gtk3
+            libGL
+            libdrm
+            libgbm
+            libxkbcommon
+            libxshmfence
+            nspr
+            nss
+            pango
+            stdenv.cc.cc
+            systemdLibs
+            vulkan-loader
+            libX11
+            libXcomposite
+            libXdamage
+            libXext
+            libXfixes
+            libXrandr
+            libxcb
+            libxkbfile
+          ];
+
+          # Chromium and bundled ANGLE load these with dlopen, so
+          # autoPatchelfHook cannot discover them from DT_NEEDED. Runpaths
+          # are not transitive, hence appendRunpaths (all ELF files) instead
+          # of runtimeDependencies (executables only).
+          appendRunpaths = map (pkg: "${lib.getLib pkg}/lib") (
+            with pkgs;
+            [
+              libGL
+              libnotify
+              libpulseaudio
+              libsecret
+              pciutils
+              vulkan-loader
+            ]
+          );
+
+          dontWrapGApps = true;
+          dontConfigure = true;
+          dontBuild = true;
+
+          installPhase = ''
+            runHook preInstall
+
+            mkdir -p $out/libexec/t3-code
+            cp -R . $out/libexec/t3-code
+            chmod -R u+w $out/libexec/t3-code
+            rm -rf $out/libexec/t3-code/AppRun \
+              $out/libexec/t3-code/t3code.desktop \
+              $out/libexec/t3-code/t3code.png \
+              $out/libexec/t3-code/.DirIcon \
+              $out/libexec/t3-code/usr
+
+            install -Dm444 t3code.desktop $out/share/applications/t3-code.desktop
             mkdir -p $out/share/icons
-            cp -R ${appimageContents}/usr/share/icons/hicolor \
-              $out/share/icons/hicolor
-            install -Dm444 ${appimageContents}/t3code.png \
-              $out/share/pixmaps/t3-code.png
+            cp -R usr/share/icons/hicolor $out/share/icons/hicolor
 
             substituteInPlace $out/share/applications/t3-code.desktop \
               --replace-fail 'Exec=AppRun --no-sandbox %U' 'Exec=t3-code %U'
+
+            rm $out/libexec/t3-code/libvulkan.so.1
+            ln -s ${lib.getLib pkgs.vulkan-loader}/lib/libvulkan.so.1 $out/libexec/t3-code/
+
+            runHook postInstall
+          '';
+
+          postFixup = ''
+            makeWrapper $out/libexec/t3-code/t3code $out/bin/t3-code \
+              "''${gappsWrapperArgs[@]}" \
+              --set T3CODE_DISABLE_AUTO_UPDATE 1
           '';
 
           meta = mkMeta system;
@@ -98,9 +175,12 @@
             mkdir -p "$out/Applications" "$out/bin"
             cp -R "${appName}" "$out/Applications/"
 
+            # Note: launching the .app bundle directly (e.g. from Finder)
+            # bypasses this wrapper and its environment.
             makeWrapper \
               "$out/Applications/${appName}/Contents/MacOS/${executable}" \
-              "$out/bin/t3-code"
+              "$out/bin/t3-code" \
+              --set T3CODE_DISABLE_AUTO_UPDATE 1
 
             runHook postInstall
           '';
@@ -135,14 +215,15 @@
       apps = lib.genAttrs supportedSystems (
         system:
         let
-          package = self.packages.${system}.t3-code;
+          app = {
+            type = "app";
+            program = lib.getExe self.packages.${system}.t3-code;
+            meta.description = "Run T3 Code";
+          };
         in
         {
-          default = self.apps.${system}.t3-code;
-          t3-code = {
-            type = "app";
-            program = "${package}/bin/t3-code";
-          };
+          default = app;
+          t3-code = app;
         }
       );
     };

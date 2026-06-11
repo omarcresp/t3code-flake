@@ -69,8 +69,7 @@ nix profile install github:omarcresp/t3code-flake#t3-code
 | Output | Description |
 | --- | --- |
 | `packages.x86_64-linux.default` | Alias of Linux `t3-code` package |
-| `packages.x86_64-linux.t3-code` | Wrapped AppImage package |
-| `packages.x86_64-darwin.t3-code` | macOS Intel app bundle package |
+| `packages.x86_64-linux.t3-code` | Electron app extracted from the upstream AppImage and patched for Nix |
 | `packages.aarch64-darwin.t3-code` | macOS Apple Silicon app bundle package |
 | `apps.<system>.t3-code` | Runnable app (`nix run`) for each supported system |
 
@@ -83,8 +82,9 @@ nix flake show github:omarcresp/t3code-flake
 ## Platform Support
 
 - `x86_64-linux`
-- `x86_64-darwin`
 - `aarch64-darwin`
+
+Intel macOS (`x86_64-darwin`) is not supported: nixpkgs 26.05 is the last release supporting that platform, so it was dropped from this flake.
 
 ## Troubleshooting
 

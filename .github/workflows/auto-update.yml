@@ -6,25 +6,25 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: write
+  contents: read
 
 concurrency:
   group: auto-update
   cancel-in-progress: true
 
 jobs:
-  update:
+  check-update:
     timeout-minutes: 5
     runs-on: ubuntu-latest
+    outputs:
+      changed: ${{ steps.latest.outputs.changed }}
+      version: ${{ steps.latest.outputs.version }}
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v6
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
         with:
           ref: ${{ github.ref_name }}
           fetch-depth: 1
-          sparse-checkout: |
-            flake.nix
-            update.sh
 
       - name: Read latest release and update flake.nix
         id: latest
@@ -49,24 +49,89 @@ jobs:
           echo "changed=true" >>"${GITHUB_OUTPUT}"
           echo "version=${version}" >>"${GITHUB_OUTPUT}"
 
-          # Update version in flake.nix
+          # Update version in flake.nix (URLs are derived from it)
           sed -i -E "s/version = \"[^\"]+\";/version = \"${version}\";/" flake.nix
 
-          # Update per-platform url and hash in flake.nix
-          for system in x86_64-linux x86_64-darwin aarch64-darwin; do
-            url="$(awk "/${system} = \{/,/\}/" <<<"${values}" | sed -n 's/^[[:space:]]*url = "\(.*\)";$/\1/p')"
-            hash="$(awk "/${system} = \{/,/\}/" <<<"${values}" | sed -n 's/^[[:space:]]*hash = "\(.*\)";$/\1/p')"
+          # Update per-platform hash in flake.nix
+          for system in x86_64-linux aarch64-darwin; do
+            hash="$(sed -n "s/^  ${system} = \"\(.*\)\";\$/\1/p" <<<"${values}" | head -n1)"
 
-            awk -v sys="${system}" -v new_url="${url}" -v new_hash="${hash}" '
+            if [[ -z "${hash}" ]]; then
+              echo "Failed to parse hash for ${system} from update.sh output."
+              echo "${values}"
+              exit 1
+            fi
+
+            awk -v sys="${system}" -v new_hash="${hash}" '
               $0 ~ sys " = \\{" { in_block=1 }
-              in_block && /url = "/ { sub(/url = "[^"]*"/, "url = \"" new_url "\"") }
               in_block && /hash = "/ { sub(/hash = "[^"]*"/, "hash = \"" new_hash "\""); in_block=0 }
               { print }
             ' flake.nix > flake.nix.tmp && mv flake.nix.tmp flake.nix
           done
 
-      - name: Commit and push changes
+      - name: Upload updated flake.nix
         if: steps.latest.outputs.changed == 'true'
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: updated-flake
+          path: flake.nix
+          if-no-files-found: error
+
+  build:
+    needs: check-update
+    if: needs.check-update.outputs.changed == 'true'
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        os:
+          - ubuntu-latest
+          - macos-latest
+    runs-on: ${{ matrix.os }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+        with:
+          ref: ${{ github.ref_name }}
+          fetch-depth: 1
+
+      - name: Download updated flake.nix
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: updated-flake
+
+      - name: Install Nix
+        uses: DeterminateSystems/nix-installer-action@ef8a148080ab6020fd15196c2084a2eea5ff2d25 # v22
+
+      - name: Check flake
+        if: runner.os == 'Linux'
+        run: nix flake check --all-systems --no-build
+
+      - name: Build package
+        run: nix build .#t3-code -L
+
+  push:
+    needs:
+      - check-update
+      - build
+    if: needs.check-update.outputs.changed == 'true'
+    timeout-minutes: 5
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+        with:
+          ref: ${{ github.ref_name }}
+          fetch-depth: 1
+
+      - name: Download updated flake.nix
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: updated-flake
+
+      - name: Commit and push changes
         run: |
           set -euo pipefail
           if git diff --quiet -- flake.nix; then
@@ -74,7 +139,7 @@ jobs:
             exit 0
           fi
 
-          version='${{ steps.latest.outputs.version }}'
+          version='${{ needs.check-update.outputs.version }}'
 
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"

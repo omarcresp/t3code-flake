@@ -22,7 +22,6 @@ version="${tag#v}"
 
 asset_names=(
   "x86_64-linux:T3-Code-${version}-x86_64.AppImage"
-  "x86_64-darwin:T3-Code-${version}-x64.zip"
   "aarch64-darwin:T3-Code-${version}-arm64.zip"
 )
 
@@ -40,9 +39,11 @@ to_sri() {
   fi
 }
 
+# URLs are derived from the version in flake.nix, so only version and
+# per-system hashes are emitted here.
 printf '# Update values for flake.nix\n'
 printf 'version = "%s";\n' "${version}"
-printf 'sources = {\n'
+printf 'hashes = {\n'
 
 for entry in "${asset_names[@]}"; do
   system="${entry%%:*}"
@@ -59,10 +60,9 @@ for entry in "${asset_names[@]}"; do
   fi
 
   digest="$(jq -r '.digest' <<<"${asset_json}")"
-  url="$(jq -r '.browser_download_url' <<<"${asset_json}")"
 
-  if [[ -z "${digest}" || "${digest}" == "null" || -z "${url}" || "${url}" == "null" ]]; then
-    echo "Asset '${asset_name}' is missing digest and/or browser_download_url fields." >&2
+  if [[ -z "${digest}" || "${digest}" == "null" ]]; then
+    echo "Asset '${asset_name}' is missing the digest field." >&2
     exit 1
   fi
 
@@ -73,12 +73,7 @@ for entry in "${asset_names[@]}"; do
 
   sri_hash="$(to_sri "${digest}")"
 
-  cat <<EOF
-  ${system} = {
-    url = "${url}";
-    hash = "${sri_hash}";
-  };
-EOF
+  printf '  %s = "%s";\n' "${system}" "${sri_hash}"
 done
 
 printf '};\n'
