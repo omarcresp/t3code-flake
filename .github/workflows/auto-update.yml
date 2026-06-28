@@ -18,7 +18,10 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       changed: ${{ steps.latest.outputs.changed }}
-      version: ${{ steps.latest.outputs.version }}
+      stable_changed: ${{ steps.latest.outputs.stable_changed }}
+      nightly_changed: ${{ steps.latest.outputs.nightly_changed }}
+      stable_version: ${{ steps.latest.outputs.stable_version }}
+      nightly_version: ${{ steps.latest.outputs.nightly_version }}
     steps:
       - name: Checkout repository
         uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
@@ -26,55 +29,57 @@ jobs:
           ref: ${{ github.ref_name }}
           fetch-depth: 1
 
-      - name: Read latest release and update flake.nix
+      - name: Generate release metadata
         id: latest
         run: |
           set -euo pipefail
-          values="$(./update.sh)"
+          ./update.sh > releases.nix.new
 
-          version="$(sed -n 's/^version = "\(.*\)";$/\1/p' <<<"${values}" | head -n1)"
+          stable_version="$(sed -n '/^  stable = {/,/^  };/s/^[[:space:]]*version = "\(.*\)";$/\1/p' releases.nix.new | head -n1)"
+          nightly_version="$(sed -n '/^  nightly = {/,/^  };/s/^[[:space:]]*version = "\(.*\)";$/\1/p' releases.nix.new | head -n1)"
 
-          if [[ -z "${version}" ]]; then
-            echo "Failed to parse version from update.sh output."
-            echo "${values}"
+          if [[ -z "${stable_version}" || -z "${nightly_version}" ]]; then
+            echo "Failed to parse versions from generated releases.nix."
+            cat releases.nix.new
             exit 1
           fi
 
-          current_version="$(sed -n 's/^[[:space:]]*version = "\(.*\)";$/\1/p' flake.nix | head -n1)"
-          if [[ "${current_version}" == "${version}" ]]; then
+          echo "stable_version=${stable_version}" >>"${GITHUB_OUTPUT}"
+          echo "nightly_version=${nightly_version}" >>"${GITHUB_OUTPUT}"
+
+          if cmp -s releases.nix releases.nix.new; then
             echo "changed=false" >>"${GITHUB_OUTPUT}"
+            echo "stable_changed=false" >>"${GITHUB_OUTPUT}"
+            echo "nightly_changed=false" >>"${GITHUB_OUTPUT}"
             exit 0
           fi
 
+          sed -n '/^  stable = {/,/^  };/p' releases.nix > stable.current
+          sed -n '/^  stable = {/,/^  };/p' releases.nix.new > stable.new
+          sed -n '/^  nightly = {/,/^  };/p' releases.nix > nightly.current
+          sed -n '/^  nightly = {/,/^  };/p' releases.nix.new > nightly.new
+
+          if cmp -s stable.current stable.new; then
+            echo "stable_changed=false" >>"${GITHUB_OUTPUT}"
+          else
+            echo "stable_changed=true" >>"${GITHUB_OUTPUT}"
+          fi
+
+          if cmp -s nightly.current nightly.new; then
+            echo "nightly_changed=false" >>"${GITHUB_OUTPUT}"
+          else
+            echo "nightly_changed=true" >>"${GITHUB_OUTPUT}"
+          fi
+
+          mv releases.nix.new releases.nix
           echo "changed=true" >>"${GITHUB_OUTPUT}"
-          echo "version=${version}" >>"${GITHUB_OUTPUT}"
 
-          # Update version in flake.nix (URLs are derived from it)
-          sed -i -E "s/version = \"[^\"]+\";/version = \"${version}\";/" flake.nix
-
-          # Update per-platform hash in flake.nix
-          for system in x86_64-linux aarch64-darwin; do
-            hash="$(sed -n "s/^  ${system} = \"\(.*\)\";\$/\1/p" <<<"${values}" | head -n1)"
-
-            if [[ -z "${hash}" ]]; then
-              echo "Failed to parse hash for ${system} from update.sh output."
-              echo "${values}"
-              exit 1
-            fi
-
-            awk -v sys="${system}" -v new_hash="${hash}" '
-              $0 ~ sys " = \\{" { in_block=1 }
-              in_block && /hash = "/ { sub(/hash = "[^"]*"/, "hash = \"" new_hash "\""); in_block=0 }
-              { print }
-            ' flake.nix > flake.nix.tmp && mv flake.nix.tmp flake.nix
-          done
-
-      - name: Upload updated flake.nix
+      - name: Upload updated releases.nix
         if: steps.latest.outputs.changed == 'true'
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
-          name: updated-flake
-          path: flake.nix
+          name: updated-releases
+          path: releases.nix
           if-no-files-found: error
 
   build:
@@ -95,10 +100,10 @@ jobs:
           ref: ${{ github.ref_name }}
           fetch-depth: 1
 
-      - name: Download updated flake.nix
+      - name: Download updated releases.nix
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
-          name: updated-flake
+          name: updated-releases
 
       - name: Install Nix
         uses: DeterminateSystems/nix-installer-action@ef8a148080ab6020fd15196c2084a2eea5ff2d25 # v22
@@ -107,8 +112,13 @@ jobs:
         if: runner.os == 'Linux'
         run: nix flake check --all-systems --no-build
 
-      - name: Build package
+      - name: Build stable package
+        if: needs.check-update.outputs.stable_changed == 'true'
         run: nix build .#t3-code -L
+
+      - name: Build nightly package
+        if: needs.check-update.outputs.nightly_changed == 'true'
+        run: nix build .#t3-code-nightly -L
 
   push:
     needs:
@@ -126,24 +136,35 @@ jobs:
           ref: ${{ github.ref_name }}
           fetch-depth: 1
 
-      - name: Download updated flake.nix
+      - name: Download updated releases.nix
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
-          name: updated-flake
+          name: updated-releases
 
       - name: Commit and push changes
         run: |
           set -euo pipefail
-          if git diff --quiet -- flake.nix; then
+          if git diff --quiet -- releases.nix; then
             echo "No update available."
             exit 0
           fi
 
-          version='${{ needs.check-update.outputs.version }}'
+          stable_changed='${{ needs.check-update.outputs.stable_changed }}'
+          nightly_changed='${{ needs.check-update.outputs.nightly_changed }}'
+          stable_version='${{ needs.check-update.outputs.stable_version }}'
+          nightly_version='${{ needs.check-update.outputs.nightly_version }}'
+
+          if [[ "${stable_changed}" == "true" && "${nightly_changed}" == "true" ]]; then
+            message="stable: ${stable_version}; nightly: ${nightly_version}"
+          elif [[ "${stable_changed}" == "true" ]]; then
+            message="stable: ${stable_version}"
+          else
+            message="nightly: ${nightly_version}"
+          fi
 
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
 
-          git add flake.nix
-          git commit -m "${version}"
+          git add releases.nix
+          git commit -m "${message}"
           git push

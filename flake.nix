@@ -9,45 +9,77 @@
     { self, nixpkgs }:
     let
       lib = nixpkgs.lib;
-      pname = "t3-code";
-      version = "0.0.27";
+      releases = import ./releases.nix;
+      repo = "pingdotgg/t3code";
 
       mkUrl =
-        asset: "https://github.com/pingdotgg/t3code/releases/download/v${version}/T3-Code-${version}-${asset}";
+        release: asset:
+        "https://github.com/${repo}/releases/download/v${release.version}/T3-Code-${release.version}-${asset}";
 
-      sources = {
-        x86_64-linux = {
-          url = mkUrl "x86_64.AppImage";
-          hash = "sha256-ALkm7wSVbDlZR7TWVag3NRbP1kvGJQqmpR1mmZvSCAU=";
+      assetSuffixes = {
+        x86_64-linux = "x86_64.AppImage";
+        aarch64-darwin = "arm64.zip";
+      };
+
+      mkSource =
+        release: system:
+        release.sources.${system}
+        // {
+          url = mkUrl release assetSuffixes.${system};
         };
-        aarch64-darwin = {
-          url = mkUrl "arm64.zip";
-          hash = "sha256-2teOphbCdl1mQHFvDUK+qVdBdwHD/9uu/lY4VmRf1hU=";
+
+      supportedSystems = builtins.attrNames releases.stable.sources;
+
+      channels = {
+        stable = {
+          release = releases.stable;
+          pname = "t3-code";
+          binName = "t3-code";
+          libexecName = "t3-code";
+          desktopFileName = "t3-code";
+          desktopName = null;
+          iconName = null;
+          darwinBundleName = "T3 Code (Alpha)";
+          autoPatchelfIgnoreMissingDeps = [ ];
+        };
+
+        nightly = {
+          release = releases.nightly;
+          pname = "t3-code-nightly";
+          binName = "t3-code-nightly";
+          libexecName = "t3-code-nightly";
+          desktopFileName = "t3-code-nightly";
+          desktopName = "T3 Code (Nightly)";
+          iconName = "t3-code-nightly";
+          darwinBundleName = "T3 Code (Nightly)";
+          autoPatchelfIgnoreMissingDeps = [ "libc.musl-x86_64.so.1" ];
         };
       };
 
-      supportedSystems = builtins.attrNames sources;
-
-      mkMeta = system: {
+      mkMeta = system: channel: {
         description = "T3 Code desktop app packaged from upstream release binaries";
-        homepage = "https://github.com/pingdotgg/t3code";
+        homepage = "https://github.com/${repo}";
         license = lib.licenses.mit;
-        mainProgram = "t3-code";
+        mainProgram = channel.binName;
         platforms = [ system ];
         sourceProvenance = [ lib.sourceTypes.binaryNativeCode ];
       };
 
       mkLinuxPackage =
-        pkgs:
+        pkgs: channel:
         let
           system = pkgs.stdenv.hostPlatform.system;
-          src = pkgs.fetchurl sources.${system};
+          version = channel.release.version;
+          src = pkgs.fetchurl (mkSource channel.release system);
+          desktopPath = "$out/share/applications/${channel.desktopFileName}.desktop";
         in
         pkgs.stdenv.mkDerivation {
-          inherit pname version;
+          inherit (channel) pname;
+          inherit version;
 
           src = pkgs.appimageTools.extract {
-            inherit pname version src;
+            inherit (channel) pname;
+            inherit version src;
           };
 
           nativeBuildInputs = [
@@ -107,6 +139,8 @@
             ]
           );
 
+          inherit (channel) autoPatchelfIgnoreMissingDeps;
+
           dontWrapGApps = true;
           dontConfigure = true;
           dontBuild = true;
@@ -114,47 +148,64 @@
           installPhase = ''
             runHook preInstall
 
-            mkdir -p $out/libexec/t3-code
-            cp -R . $out/libexec/t3-code
-            chmod -R u+w $out/libexec/t3-code
-            rm -rf $out/libexec/t3-code/AppRun \
-              $out/libexec/t3-code/t3code.desktop \
-              $out/libexec/t3-code/t3code.png \
-              $out/libexec/t3-code/.DirIcon \
-              $out/libexec/t3-code/usr
+            mkdir -p $out/libexec/${channel.libexecName}
+            cp -R . $out/libexec/${channel.libexecName}
+            chmod -R u+w $out/libexec/${channel.libexecName}
+            rm -rf $out/libexec/${channel.libexecName}/AppRun \
+              $out/libexec/${channel.libexecName}/t3code.desktop \
+              $out/libexec/${channel.libexecName}/t3code.png \
+              $out/libexec/${channel.libexecName}/.DirIcon \
+              $out/libexec/${channel.libexecName}/usr
 
-            install -Dm444 t3code.desktop $out/share/applications/t3-code.desktop
+            install -Dm444 t3code.desktop ${desktopPath}
             mkdir -p $out/share/icons
             cp -R usr/share/icons/hicolor $out/share/icons/hicolor
 
-            substituteInPlace $out/share/applications/t3-code.desktop \
-              --replace-fail 'Exec=AppRun --no-sandbox %U' 'Exec=t3-code %U'
+            substituteInPlace ${desktopPath} \
+              --replace-fail 'Exec=AppRun --no-sandbox %U' 'Exec=${channel.binName} %U'
 
-            rm $out/libexec/t3-code/libvulkan.so.1
-            ln -s ${lib.getLib pkgs.vulkan-loader}/lib/libvulkan.so.1 $out/libexec/t3-code/
+            ${lib.optionalString (channel.desktopName != null) ''
+              if grep -q '^Name=' ${desktopPath}; then
+                sed -i '0,/^Name=.*/s//Name=${channel.desktopName}/' ${desktopPath}
+              fi
+            ''}
+
+            ${lib.optionalString (channel.iconName != null) ''
+              if grep -q '^Icon=' ${desktopPath}; then
+                sed -i 's/^Icon=.*/Icon=${channel.iconName}/' ${desktopPath}
+              fi
+
+              find $out/share/icons/hicolor -type f -name 't3code.png' \
+                -exec sh -c 'for icon do mv "$icon" "$(dirname "$icon")/${channel.iconName}.png"; done' sh {} +
+            ''}
+
+            rm $out/libexec/${channel.libexecName}/libvulkan.so.1
+            ln -s ${lib.getLib pkgs.vulkan-loader}/lib/libvulkan.so.1 $out/libexec/${channel.libexecName}/
 
             runHook postInstall
           '';
 
           postFixup = ''
-            makeWrapper $out/libexec/t3-code/t3code $out/bin/t3-code \
+            makeWrapper $out/libexec/${channel.libexecName}/t3code $out/bin/${channel.binName} \
               "''${gappsWrapperArgs[@]}" \
               --set T3CODE_DISABLE_AUTO_UPDATE 1
           '';
 
-          meta = mkMeta system;
+          meta = mkMeta system channel;
         };
 
       mkDarwinPackage =
-        pkgs:
+        pkgs: channel:
         let
           system = pkgs.stdenv.hostPlatform.system;
-          src = pkgs.fetchurl sources.${system};
-          appName = "T3 Code (Alpha).app";
-          executable = "T3 Code (Alpha)";
+          version = channel.release.version;
+          src = pkgs.fetchurl (mkSource channel.release system);
+          appName = "${channel.darwinBundleName}.app";
+          executable = channel.darwinBundleName;
         in
         pkgs.stdenvNoCC.mkDerivation {
-          inherit pname version src;
+          inherit (channel) pname;
+          inherit version src;
 
           nativeBuildInputs = [
             pkgs.makeBinaryWrapper
@@ -179,24 +230,24 @@
             # bypasses this wrapper and its environment.
             makeWrapper \
               "$out/Applications/${appName}/Contents/MacOS/${executable}" \
-              "$out/bin/t3-code" \
+              "$out/bin/${channel.binName}" \
               --set T3CODE_DISABLE_AUTO_UPDATE 1
 
             runHook postInstall
           '';
 
-          meta = mkMeta system;
+          meta = mkMeta system channel;
         };
 
       mkPackage =
-        system:
+        system: channel:
         let
           pkgs = import nixpkgs { inherit system; };
         in
         if pkgs.stdenv.hostPlatform.isLinux then
-          mkLinuxPackage pkgs
+          mkLinuxPackage pkgs channel
         else if pkgs.stdenv.hostPlatform.isDarwin then
-          mkDarwinPackage pkgs
+          mkDarwinPackage pkgs channel
         else
           throw "Unsupported system: ${system}";
     in
@@ -204,26 +255,34 @@
       packages = lib.genAttrs supportedSystems (
         system:
         let
-          package = mkPackage system;
+          stable = mkPackage system channels.stable;
+          nightly = mkPackage system channels.nightly;
         in
         {
-          default = package;
-          t3-code = package;
+          default = stable;
+          t3-code = stable;
+          t3-code-nightly = nightly;
         }
       );
 
       apps = lib.genAttrs supportedSystems (
         system:
         let
-          app = {
+          stable = {
             type = "app";
             program = lib.getExe self.packages.${system}.t3-code;
             meta.description = "Run T3 Code";
           };
+          nightly = {
+            type = "app";
+            program = lib.getExe self.packages.${system}.t3-code-nightly;
+            meta.description = "Run T3 Code Nightly";
+          };
         in
         {
-          default = app;
-          t3-code = app;
+          default = stable;
+          t3-code = stable;
+          t3-code-nightly = nightly;
         }
       );
     };

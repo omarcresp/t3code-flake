@@ -20,6 +20,12 @@ Run straight from GitHub:
 nix run github:omarcresp/t3code-flake#t3-code
 ```
 
+Run the pinned nightly build:
+
+```bash
+nix run github:omarcresp/t3code-flake#t3-code-nightly
+```
+
 Build locally from a clone:
 
 ```bash
@@ -31,6 +37,14 @@ Install into your profile:
 ```bash
 nix profile install github:omarcresp/t3code-flake#t3-code
 ```
+
+Install nightly into your profile:
+
+```bash
+nix profile install github:omarcresp/t3code-flake#t3-code-nightly
+```
+
+The default package and app remain the stable release.
 
 ## Install as a Flake Input
 
@@ -70,8 +84,11 @@ nix profile install github:omarcresp/t3code-flake#t3-code
 | --- | --- |
 | `packages.x86_64-linux.default` | Alias of Linux `t3-code` package |
 | `packages.x86_64-linux.t3-code` | Electron app extracted from the upstream AppImage and patched for Nix |
+| `packages.x86_64-linux.t3-code-nightly` | Pinned nightly Electron app extracted from the upstream AppImage and patched for Nix |
 | `packages.aarch64-darwin.t3-code` | macOS Apple Silicon app bundle package |
+| `packages.aarch64-darwin.t3-code-nightly` | Pinned nightly macOS Apple Silicon app bundle package |
 | `apps.<system>.t3-code` | Runnable app (`nix run`) for each supported system |
+| `apps.<system>.t3-code-nightly` | Runnable nightly app (`nix run`) for each supported system |
 
 Inspect outputs:
 
