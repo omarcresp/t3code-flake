@@ -40,7 +40,7 @@
           desktopName = null;
           iconName = null;
           darwinBundleName = "T3 Code (Alpha)";
-          autoPatchelfIgnoreMissingDeps = [ ];
+          autoPatchelfIgnoreMissingDeps = [ "libc.musl-x86_64.so.1" ];
         };
 
         nightly = {
