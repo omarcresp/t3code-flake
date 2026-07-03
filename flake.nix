@@ -226,8 +226,8 @@
             mkdir -p "$out/Applications" "$out/bin"
             cp -R "${appName}" "$out/Applications/"
 
-            # Note: launching the .app bundle directly (e.g. from Finder)
-            # bypasses this wrapper and its environment.
+            # Keep the upstream .app bundle byte-for-byte signed. Mutating
+            # Info.plist invalidates the code signature and macOS SIGKILLs it.
             makeWrapper \
               "$out/Applications/${appName}/Contents/MacOS/${executable}" \
               "$out/bin/${channel.binName}" \
