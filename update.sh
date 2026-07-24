@@ -25,45 +25,72 @@ to_sri() {
   fi
 }
 
-fetch_stable_release() {
-  local release_json
-  release_json="$(curl -fsSL "${api_base}/releases/latest")"
+select_ready_release() {
+  local releases_json="$1"
+  local channel="$2"
+  local candidate_tag release_json selected_tag
 
-  local tag prerelease
-  tag="$(jq -r '.tag_name' <<<"${release_json}")"
-  prerelease="$(jq -r '.prerelease' <<<"${release_json}")"
-
-  if [[ -z "${tag}" || "${tag}" == "null" ]]; then
-    echo "Could not read stable tag_name from GitHub release payload." >&2
-    exit 1
-  fi
-
-  if [[ "${prerelease}" != "false" ]]; then
-    echo "GitHub latest release '${tag}' is marked prerelease; refusing to use it as stable." >&2
-    exit 1
-  fi
-
-  printf '%s\n' "${release_json}"
-}
-
-fetch_nightly_release() {
-  local releases_json
-  releases_json="$(curl -fsSL "${api_base}/releases?per_page=100")"
-
-  local release_json
-  release_json="$(
-    jq -c '
+  candidate_tag="$(
+    jq -r --arg channel "${channel}" '
       [
         .[]
-        | select(.prerelease == true)
-        | select(.tag_name | test("^v[0-9]+\\.[0-9]+\\.[0-9]+-nightly\\.[0-9]{8}\\.[0-9]+$"))
+        | select(
+            if $channel == "stable" then
+              .prerelease == false
+            else
+              .prerelease == true
+              and (.tag_name | test("^v[0-9]+\\.[0-9]+\\.[0-9]+-nightly\\.[0-9]{8}\\.[0-9]+$"))
+            end
+          )
+      ][0].tag_name // empty
+    ' <<<"${releases_json}"
+  )"
+
+  release_json="$(
+    jq -c --arg channel "${channel}" '
+      def valid_digest:
+        type == "string"
+        and test("^sha256:[0-9a-fA-F]{64}$");
+
+      def has_ready_asset($name):
+        any(
+          .assets[]?;
+          .name == $name
+          and (.digest | valid_digest)
+        );
+
+      def version:
+        .tag_name
+        | if startswith("v") then .[1:] else . end;
+
+      def ready:
+        version as $version
+        | has_ready_asset("T3-Code-\($version)-x86_64.AppImage")
+        and has_ready_asset("T3-Code-\($version)-arm64.zip");
+
+      [
+        .[]
+        | select(
+            if $channel == "stable" then
+              .prerelease == false
+            else
+              .prerelease == true
+              and (.tag_name | test("^v[0-9]+\\.[0-9]+\\.[0-9]+-nightly\\.[0-9]{8}\\.[0-9]+$"))
+            end
+          )
+        | select(ready)
       ][0] // empty
     ' <<<"${releases_json}"
   )"
 
   if [[ -z "${release_json}" ]]; then
-    echo "Could not find a prerelease with a nightly tag in the first 100 GitHub releases." >&2
+    echo "Could not find a complete ${channel} release in the first 100 GitHub releases." >&2
     exit 1
+  fi
+
+  selected_tag="$(jq -r '.tag_name' <<<"${release_json}")"
+  if [[ -n "${candidate_tag}" && "${candidate_tag}" != "${selected_tag}" ]]; then
+    echo "Newest ${channel} release '${candidate_tag}' is not ready; keeping '${selected_tag}' until all required assets and digests are published." >&2
   fi
 
   printf '%s\n' "${release_json}"
@@ -79,7 +106,11 @@ asset_hash() {
 
   local asset_json
   asset_json="$(
-    jq -cr --arg name "${asset_name}" '.assets[] | select(.name == $name)' <<<"${release_json}" \
+    jq -cr --arg name "${asset_name}" '
+      .assets[]
+      | select(.name == $name)
+      | select(.digest | type == "string" and test("^sha256:[0-9a-fA-F]{64}$"))
+    ' <<<"${release_json}" \
       | head -n 1
   )"
   if [[ -z "${asset_json}" ]]; then
@@ -128,8 +159,9 @@ emit_channel() {
   printf '  };\n'
 }
 
-stable_release="$(fetch_stable_release)"
-nightly_release="$(fetch_nightly_release)"
+releases_json="$(curl -fsSL "${api_base}/releases?per_page=100")"
+stable_release="$(select_ready_release "${releases_json}" stable)"
+nightly_release="$(select_ready_release "${releases_json}" nightly)"
 
 printf '{\n'
 emit_channel stable "${stable_release}"

@@ -2,7 +2,10 @@ name: Auto Update
 
 on:
   schedule:
-    - cron: "37 */3 * * *"
+    # Poll independently of upstream's three-hour schedule. GitHub may delay
+    # scheduled runs, so a fixed offset from upstream can miss a completed
+    # release until the next three-hour window.
+    - cron: "37 * * * *"
   workflow_dispatch:
 
 permissions:
