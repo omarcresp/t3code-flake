@@ -36,7 +36,7 @@ jobs:
         id: latest
         run: |
           set -euo pipefail
-          ./update.sh > releases.nix.new
+          RELEASE_NOTES_DIR=release-notes ./update.sh > releases.nix.new
 
           stable_version="$(sed -n '/^  stable = {/,/^  };/s/^[[:space:]]*version = "\(.*\)";$/\1/p' releases.nix.new | head -n1)"
           nightly_version="$(sed -n '/^  nightly = {/,/^  };/s/^[[:space:]]*version = "\(.*\)";$/\1/p' releases.nix.new | head -n1)"
@@ -82,7 +82,9 @@ jobs:
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: updated-releases
-          path: releases.nix
+          path: |
+            releases.nix
+            release-notes
           if-no-files-found: error
 
   build:
@@ -144,7 +146,7 @@ jobs:
         with:
           name: updated-releases
 
-      - name: Commit and push changes
+      - name: Commit stable and nightly updates separately
         run: |
           set -euo pipefail
           if git diff --quiet -- releases.nix; then
@@ -157,17 +159,44 @@ jobs:
           stable_version='${{ needs.check-update.outputs.stable_version }}'
           nightly_version='${{ needs.check-update.outputs.nightly_version }}'
 
-          if [[ "${stable_changed}" == "true" && "${nightly_changed}" == "true" ]]; then
-            message="stable: ${stable_version}; nightly: ${nightly_version}"
-          elif [[ "${stable_changed}" == "true" ]]; then
-            message="stable: ${stable_version}"
-          else
-            message="nightly: ${nightly_version}"
-          fi
-
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
 
-          git add releases.nix
-          git commit -m "${message}"
+          mv releases.nix releases.nix.updated
+          git restore releases.nix
+
+          commit_channel() {
+            local channel="$1"
+            local version="$2"
+            local notes="release-notes/${channel}.md"
+            local release_url
+            local message
+
+            release_url="$(<"release-notes/${channel}.url")"
+            message="$(mktemp)"
+
+            {
+              printf '%s: %s\n\n' "${channel}" "${version}"
+              if [[ -s "${notes}" ]]; then
+                cat "${notes}"
+              else
+                printf 'No upstream release notes provided.\n'
+              fi
+              printf '\nUpstream release: %s\n' "${release_url}"
+            } >"${message}"
+
+            ./replace-release-channel.sh releases.nix releases.nix.updated "${channel}"
+            git add releases.nix
+            git commit --cleanup=verbatim -F "${message}"
+            rm -f "${message}"
+          }
+
+          if [[ "${stable_changed}" == "true" ]]; then
+            commit_channel stable "${stable_version}"
+          fi
+
+          if [[ "${nightly_changed}" == "true" ]]; then
+            commit_channel nightly "${nightly_version}"
+          fi
+
           git push

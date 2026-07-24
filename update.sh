@@ -96,6 +96,19 @@ select_ready_release() {
   printf '%s\n' "${release_json}"
 }
 
+write_release_notes() {
+  local channel="$1"
+  local release_json="$2"
+
+  if [[ -z "${RELEASE_NOTES_DIR:-}" ]]; then
+    return
+  fi
+
+  mkdir -p "${RELEASE_NOTES_DIR}"
+  jq -r '.body // ""' <<<"${release_json}" >"${RELEASE_NOTES_DIR}/${channel}.md"
+  jq -r '.html_url // ""' <<<"${release_json}" >"${RELEASE_NOTES_DIR}/${channel}.url"
+}
+
 asset_hash() {
   local release_json="$1"
   local channel="$2"
@@ -162,6 +175,9 @@ emit_channel() {
 releases_json="$(curl -fsSL "${api_base}/releases?per_page=100")"
 stable_release="$(select_ready_release "${releases_json}" stable)"
 nightly_release="$(select_ready_release "${releases_json}" nightly)"
+
+write_release_notes stable "${stable_release}"
+write_release_notes nightly "${nightly_release}"
 
 printf '{\n'
 emit_channel stable "${stable_release}"
