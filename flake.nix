@@ -34,7 +34,7 @@
         stable = {
           release = releases.stable;
           pname = "t3-code";
-          binName = "t3-code";
+          binName = "t3";
           libexecName = "t3-code";
           desktopFileName = "t3-code";
           desktopName = null;
@@ -46,7 +46,7 @@
         nightly = {
           release = releases.nightly;
           pname = "t3-code-nightly";
-          binName = "t3-code-nightly";
+          binName = "t3";
           libexecName = "t3-code-nightly";
           desktopFileName = "t3-code-nightly";
           desktopName = "T3 Code (Nightly)";

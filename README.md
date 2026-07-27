@@ -44,6 +44,8 @@ Install nightly into your profile:
 nix profile install github:omarcresp/t3code-flake#t3-code-nightly
 ```
 
+Both packages install the executable as `t3`.
+
 The default package and app remain the stable release.
 
 ## Install as a Flake Input
