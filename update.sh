@@ -172,7 +172,12 @@ emit_channel() {
   printf '  };\n'
 }
 
-releases_json="$(curl -fsSL "${api_base}/releases?per_page=100")"
+curl_auth_args=()
+if [[ -n "${GITHUB_TOKEN:-}" ]]; then
+  curl_auth_args=(-H "Authorization: Bearer ${GITHUB_TOKEN}")
+fi
+
+releases_json="$(curl -fsSL "${curl_auth_args[@]}" -H "Accept: application/vnd.github+json" "${api_base}/releases?per_page=100")"
 stable_release="$(select_ready_release "${releases_json}" stable)"
 nightly_release="$(select_ready_release "${releases_json}" nightly)"
 
