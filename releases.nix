@@ -8,10 +8,10 @@
   };
 
   nightly = {
-    version = "0.0.33-nightly.20260808.1029";
+    version = "0.0.33-nightly.20260808.1030";
     sources = {
-      x86_64-linux.hash = "sha256-ZUEzgoGz479dS0s4GDYAMImC7bgo+7xhm+6SRafZGHg=";
-      aarch64-darwin.hash = "sha256-bYN3ljGO7SUqctpU+o7LHLtBjd7nEP3wSFktgc0uCHU=";
+      x86_64-linux.hash = "sha256-QWX+/sewQiw4coo7gBDJ0wAqUtC8UsdYIhyA2dASSrY=";
+      aarch64-darwin.hash = "sha256-V/wCn4P7jWBRxHbmWpevppp1gkZofLI2oJmozpdV2zo=";
     };
   };
 }
