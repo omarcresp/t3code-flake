@@ -5,7 +5,10 @@
 
 A small, focused Nix flake that packages the upstream release binaries for [T3 Code](https://github.com/pingdotgg/t3code) on Linux and macOS.
 
-This repo exposes both a package and an app so you can `nix run`, `nix build`, or consume it from another flake.
+This repo exposes packages and apps so you can `nix run`, `nix build`, or consume it from another flake. Every package contains two executables:
+
+- `t3code` launches the Electron desktop app.
+- `t3` runs the bundled headless CLI using Electron's Node mode.
 
 ## Why This Flake
 
@@ -26,6 +29,13 @@ Run the pinned nightly build:
 nix run github:omarcresp/t3code-flake#t3-code-nightly
 ```
 
+Run the stable or nightly headless CLI:
+
+```bash
+nix run github:omarcresp/t3code-flake#t3 -- serve --help
+nix run github:omarcresp/t3code-flake#t3-nightly -- serve --help
+```
+
 Build locally from a clone:
 
 ```bash
@@ -44,7 +54,7 @@ Install nightly into your profile:
 nix profile install github:omarcresp/t3code-flake#t3-code-nightly
 ```
 
-Both packages install the executable as `t3`.
+Both packages install the desktop executable as `t3code` and the headless CLI as `t3`.
 
 The default package and app remain the stable release.
 
@@ -91,6 +101,11 @@ The default package and app remain the stable release.
 | `packages.aarch64-darwin.t3-code-nightly` | Pinned nightly macOS Apple Silicon app bundle package |
 | `apps.<system>.t3-code` | Runnable app (`nix run`) for each supported system |
 | `apps.<system>.t3-code-nightly` | Runnable nightly app (`nix run`) for each supported system |
+| `apps.<system>.t3code` | Alias for the stable desktop app |
+| `apps.<system>.t3code-nightly` | Alias for the nightly desktop app |
+| `apps.<system>.t3` | Stable headless CLI |
+| `apps.<system>.t3-nightly` | Nightly headless CLI |
+| `checks.<system>.t3-cli` | Verifies stable and nightly `t3 serve --help` reach the headless CLI |
 
 Inspect outputs:
 

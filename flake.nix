@@ -34,7 +34,6 @@
         stable = {
           release = releases.stable;
           pname = "t3-code";
-          binName = "t3";
           libexecName = "t3-code";
           desktopFileName = "t3-code";
           desktopName = null;
@@ -46,7 +45,6 @@
         nightly = {
           release = releases.nightly;
           pname = "t3-code-nightly";
-          binName = "t3";
           libexecName = "t3-code-nightly";
           desktopFileName = "t3-code-nightly";
           desktopName = "T3 Code (Nightly)";
@@ -60,7 +58,7 @@
         description = "T3 Code desktop app packaged from upstream release binaries";
         homepage = "https://github.com/${repo}";
         license = lib.licenses.mit;
-        mainProgram = channel.binName;
+        mainProgram = "t3code";
         platforms = [ system ];
         sourceProvenance = [ lib.sourceTypes.binaryNativeCode ];
       };
@@ -162,7 +160,7 @@
             cp -R usr/share/icons/hicolor $out/share/icons/hicolor
 
             substituteInPlace ${desktopPath} \
-              --replace-fail 'Exec=AppRun --no-sandbox %U' 'Exec=${channel.binName} %U'
+              --replace-fail 'Exec=AppRun --no-sandbox %U' 'Exec=t3code %U'
 
             ${lib.optionalString (channel.desktopName != null) ''
               if grep -q '^Name=' ${desktopPath}; then
@@ -186,9 +184,13 @@
           '';
 
           postFixup = ''
-            makeWrapper $out/libexec/${channel.libexecName}/t3code $out/bin/${channel.binName} \
+            makeWrapper $out/libexec/${channel.libexecName}/t3code $out/bin/t3code \
               "''${gappsWrapperArgs[@]}" \
               --set T3CODE_DISABLE_AUTO_UPDATE 1
+
+            makeWrapper $out/libexec/${channel.libexecName}/t3code $out/bin/t3 \
+              --set ELECTRON_RUN_AS_NODE 1 \
+              --add-flag $out/libexec/${channel.libexecName}/resources/app.asar/apps/server/dist/bin.mjs
           '';
 
           meta = mkMeta system channel;
@@ -230,8 +232,14 @@
             # Info.plist invalidates the code signature and macOS SIGKILLs it.
             makeWrapper \
               "$out/Applications/${appName}/Contents/MacOS/${executable}" \
-              "$out/bin/${channel.binName}" \
+              "$out/bin/t3code" \
               --set T3CODE_DISABLE_AUTO_UPDATE 1
+
+            makeWrapper \
+              "$out/Applications/${appName}/Contents/MacOS/${executable}" \
+              "$out/bin/t3" \
+              --set ELECTRON_RUN_AS_NODE 1 \
+              --add-flag "$out/Applications/${appName}/Contents/Resources/app.asar/apps/server/dist/bin.mjs"
 
             runHook postInstall
           '';
@@ -268,21 +276,45 @@
       apps = lib.genAttrs supportedSystems (
         system:
         let
-          stable = {
+          mkApp = package: program: description: {
             type = "app";
-            program = lib.getExe self.packages.${system}.t3-code;
-            meta.description = "Run T3 Code";
+            program = "${package}/bin/${program}";
+            meta = { inherit description; };
           };
-          nightly = {
-            type = "app";
-            program = lib.getExe self.packages.${system}.t3-code-nightly;
-            meta.description = "Run T3 Code Nightly";
-          };
+          stablePackage = self.packages.${system}.t3-code;
+          nightlyPackage = self.packages.${system}.t3-code-nightly;
+          stableGui = mkApp stablePackage "t3code" "Run T3 Code";
+          stableCli = mkApp stablePackage "t3" "Run the T3 Code headless CLI";
+          nightlyGui = mkApp nightlyPackage "t3code" "Run T3 Code Nightly";
+          nightlyCli = mkApp nightlyPackage "t3" "Run the T3 Code Nightly headless CLI";
         in
         {
-          default = stable;
-          t3-code = stable;
-          t3-code-nightly = nightly;
+          default = stableGui;
+          t3-code = stableGui;
+          t3-code-nightly = nightlyGui;
+          t3code = stableGui;
+          t3code-nightly = nightlyGui;
+          t3 = stableCli;
+          t3-nightly = nightlyCli;
+        }
+      );
+
+      checks = lib.genAttrs supportedSystems (
+        system:
+        let
+          pkgs = import nixpkgs { inherit system; };
+          stable = self.packages.${system}.t3-code;
+          nightly = self.packages.${system}.t3-code-nightly;
+        in
+        {
+          t3-cli = pkgs.runCommand "t3-cli-check" { nativeBuildInputs = [ pkgs.coreutils ]; } ''
+            for package in ${stable} ${nightly}; do
+              help="$(timeout 30 "$package/bin/t3" serve --help 2>&1)"
+              grep -F 't3 serve' <<<"$help"
+              grep -F 'Run the T3 Code server without opening a browser' <<<"$help"
+            done
+            touch $out
+          '';
         }
       );
     };
