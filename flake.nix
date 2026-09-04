@@ -103,6 +103,7 @@
             libGL
             libdrm
             libgbm
+            libsecret # resources/browser-secret/t3-browser-secret links this directly
             libxkbcommon
             libxshmfence
             nspr
