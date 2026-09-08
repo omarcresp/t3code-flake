@@ -1,9 +1,9 @@
 {
   stable = {
-    version = "0.0.39";
+    version = "0.0.40";
     sources = {
-      x86_64-linux.hash = "sha256-T3jJk5wDhvm+Wi2Om6+WRK9Jc0QBWBejb+qL6EmBvag=";
-      aarch64-darwin.hash = "sha256-PI/gviFFxGqhTxTnCatQzF/4+S3IqsHDQGrqfDnTBNo=";
+      x86_64-linux.hash = "sha256-i/X9RMt/rQxDGR1U/v35dKgifVBQXsuKvPdjJiCfJko=";
+      aarch64-darwin.hash = "sha256-v9kLAdoXayDLWG864pVlDCiuMhk3GV8gN2QIaNI0JgQ=";
     };
   };
 
