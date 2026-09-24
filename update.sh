@@ -29,9 +29,11 @@ select_ready_release() {
   local releases_json="$1"
   local channel="$2"
   local candidate_tag release_json selected_tag
+  local release_kind="${channel}"
+  [[ "${channel}" != orchestrator ]] || release_kind=preview
 
   candidate_tag="$(
-    jq -r --arg channel "${channel}" '
+    jq -r --arg channel "${channel}" --arg kind "${release_kind}" '
       [
         .[]
         | select(
@@ -39,7 +41,7 @@ select_ready_release() {
               .prerelease == false
             else
               .prerelease == true
-              and (.tag_name | test("^v[0-9]+\\.[0-9]+\\.[0-9]+-nightly\\.[0-9]{8}\\.[0-9]+$"))
+              and (.tag_name | test("^v[0-9]+\\.[0-9]+\\.[0-9]+-" + $kind + "\\.[0-9]{8}\\.[0-9]+$"))
             end
           )
       ][0].tag_name // empty
@@ -47,7 +49,7 @@ select_ready_release() {
   )"
 
   release_json="$(
-    jq -c --arg channel "${channel}" '
+    jq -c --arg channel "${channel}" --arg kind "${release_kind}" '
       def valid_digest:
         type == "string"
         and test("^sha256:[0-9a-fA-F]{64}$");
@@ -75,7 +77,7 @@ select_ready_release() {
               .prerelease == false
             else
               .prerelease == true
-              and (.tag_name | test("^v[0-9]+\\.[0-9]+\\.[0-9]+-nightly\\.[0-9]{8}\\.[0-9]+$"))
+              and (.tag_name | test("^v[0-9]+\\.[0-9]+\\.[0-9]+-" + $kind + "\\.[0-9]{8}\\.[0-9]+$"))
             end
           )
         | select(ready)
@@ -94,6 +96,29 @@ select_ready_release() {
   fi
 
   printf '%s\n' "${release_json}"
+}
+
+# Preview tags are shared by unrelated branches. Require an explicit association
+# with PR #2829 before considering a release for the orchestrator channel.
+filter_orchestrator_releases() {
+  local releases_json="$1"
+  local release rev pulls page matches
+  while IFS= read -r release; do
+    rev="$(jq -r '.target_commitish' <<<"${release}")"
+    [[ "${rev}" =~ ^[0-9a-f]{40}$ ]] || continue
+    page=1
+    while :; do
+      pulls="$(curl -fsSL "${curl_auth_args[@]}" -H "Accept: application/vnd.github+json" \
+        "${api_base}/commits/${rev}/pulls?per_page=100&page=${page}")" || return 1
+      matches="$(jq 'any(.[]; .number == 2829)' <<<"${pulls}")" || return 1
+      if [[ "${matches}" == true ]]; then
+        printf '%s\n' "${release}"
+        break
+      fi
+      [[ "$(jq length <<<"${pulls}")" == 100 ]] || break
+      page=$((page + 1))
+    done
+  done < <(jq -c '.[] | select(.prerelease == true and (.tag_name | test("^v[0-9]+\\.[0-9]+\\.[0-9]+-preview\\.[0-9]{8}\\.[0-9]+$")))' <<<"${releases_json}")
 }
 
 write_release_notes() {
@@ -165,6 +190,9 @@ emit_channel() {
 
   printf '  %s = {\n' "${channel}"
   printf '    version = "%s";\n' "${version}"
+  if [[ "${channel}" == orchestrator ]]; then
+    printf '    rev = "%s";\n' "$(jq -r .target_commitish <<<"${release_json}")"
+  fi
   printf '    sources = {\n'
   printf '      x86_64-linux.hash = "%s";\n' "${x86_hash}"
   printf '      aarch64-darwin.hash = "%s";\n' "${arm_hash}"
@@ -181,6 +209,12 @@ releases_json="$(curl -fsSL "${curl_auth_args[@]}" -H "Accept: application/vnd.g
 stable_release="$(select_ready_release "${releases_json}" stable)"
 nightly_release="$(select_ready_release "${releases_json}" nightly)"
 
+orchestrator_candidates="$(filter_orchestrator_releases "${releases_json}")"
+orchestrator_candidates="$(jq -s '.' <<<"${orchestrator_candidates}")"
+# Keep the existing pin if no complete matching preview remains in the release
+# window (for example after the PR is closed or old previews are removed).
+orchestrator_release="$(select_ready_release "${orchestrator_candidates}" orchestrator)" || orchestrator_release=""
+
 write_release_notes stable "${stable_release}"
 write_release_notes nightly "${nightly_release}"
 
@@ -188,4 +222,12 @@ printf '{\n'
 emit_channel stable "${stable_release}"
 printf '\n'
 emit_channel nightly "${nightly_release}"
+printf '\n'
+if [[ -n "${orchestrator_release}" ]]; then
+  write_release_notes orchestrator "${orchestrator_release}"
+  emit_channel orchestrator "${orchestrator_release}"
+else
+  echo "Keeping the pinned orchestrator release." >&2
+  sed -n '/^  orchestrator = {/,/^  };/p' "$(dirname "$0")/releases.nix"
+fi
 printf '}\n'

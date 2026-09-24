@@ -29,6 +29,22 @@ Run the pinned nightly build:
 nix run github:omarcresp/t3code-flake#t3-code-nightly
 ```
 
+Run the pinned orchestrator preview from [PR #2829](https://github.com/pingdotgg/t3code/pull/2829):
+
+```bash
+nix run .#orchestrator
+nix run .#t3-orchestrator -- serve --help
+nix build .#orchestrator
+```
+
+This target pins preview `0.0.43-preview.20260923.2177` (September 23, 2026),
+commit `3e4ca4c532f9746f8ce62acfa80b8a6ea30e962b`. Its version, revision, and
+artifact hashes live in `releases.nix`. The hourly auto-update pipeline selects
+the latest complete preview associated with PR #2829, builds it on Linux and
+macOS, then commits the update separately. Unrelated previews are ignored; if
+no matching complete preview is available, the existing pin is retained. On macOS, the upstream bundle retains the name
+`T3 Code (Alpha)` to preserve its signature.
+
 Run the stable or nightly headless CLI:
 
 ```bash
@@ -54,7 +70,7 @@ Install nightly into your profile:
 nix profile install github:omarcresp/t3code-flake#t3-code-nightly
 ```
 
-Both packages install the desktop executable as `t3code` and the headless CLI as `t3`.
+All packages install the desktop executable as `t3code` and the headless CLI as `t3`.
 
 The default package and app remain the stable release.
 
@@ -99,13 +115,16 @@ The default package and app remain the stable release.
 | `packages.x86_64-linux.t3-code-nightly` | Pinned nightly Electron app extracted from the upstream AppImage and patched for Nix |
 | `packages.aarch64-darwin.t3-code` | macOS Apple Silicon app bundle package |
 | `packages.aarch64-darwin.t3-code-nightly` | Pinned nightly macOS Apple Silicon app bundle package |
+| `packages.<system>.orchestrator` | Pinned orchestrator PR preview desktop package |
+| `apps.<system>.orchestrator` | Orchestrator preview desktop app |
+| `apps.<system>.t3-orchestrator` | Orchestrator preview headless CLI |
 | `apps.<system>.t3-code` | Runnable app (`nix run`) for each supported system |
 | `apps.<system>.t3-code-nightly` | Runnable nightly app (`nix run`) for each supported system |
 | `apps.<system>.t3code` | Alias for the stable desktop app |
 | `apps.<system>.t3code-nightly` | Alias for the nightly desktop app |
 | `apps.<system>.t3` | Stable headless CLI |
 | `apps.<system>.t3-nightly` | Nightly headless CLI |
-| `checks.<system>.t3-cli` | Verifies stable and nightly `t3 serve --help` reach the headless CLI |
+| `checks.<system>.t3-cli` | Verifies stable, nightly, and orchestrator `t3 serve --help` reach the headless CLI |
 
 Inspect outputs:
 

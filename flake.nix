@@ -31,6 +31,17 @@
       supportedSystems = builtins.attrNames releases.stable.sources;
 
       channels = {
+        orchestrator = {
+          release = releases.orchestrator;
+          pname = "t3-code-orchestrator";
+          libexecName = "t3-code-orchestrator";
+          desktopFileName = "t3-code-orchestrator";
+          desktopName = "T3 Code (Orchestrator)";
+          iconName = "t3-code-orchestrator";
+          darwinBundleName = "T3 Code (Alpha)";
+          autoPatchelfIgnoreMissingDeps = [ "libc.musl-x86_64.so.1" ];
+        };
+
         stable = {
           release = releases.stable;
           pname = "t3-code";
@@ -271,6 +282,7 @@
           default = stable;
           t3-code = stable;
           t3-code-nightly = nightly;
+          orchestrator = mkPackage system channels.orchestrator;
         }
       );
 
@@ -284,6 +296,7 @@
           };
           stablePackage = self.packages.${system}.t3-code;
           nightlyPackage = self.packages.${system}.t3-code-nightly;
+          orchestratorPackage = self.packages.${system}.orchestrator;
           stableGui = mkApp stablePackage "t3code" "Run T3 Code";
           stableCli = mkApp stablePackage "t3" "Run the T3 Code headless CLI";
           nightlyGui = mkApp nightlyPackage "t3code" "Run T3 Code Nightly";
@@ -297,6 +310,8 @@
           t3code-nightly = nightlyGui;
           t3 = stableCli;
           t3-nightly = nightlyCli;
+          orchestrator = mkApp orchestratorPackage "t3code" "Run T3 Code Orchestrator";
+          t3-orchestrator = mkApp orchestratorPackage "t3" "Run the T3 Code Orchestrator headless CLI";
         }
       );
 
@@ -306,10 +321,11 @@
           pkgs = import nixpkgs { inherit system; };
           stable = self.packages.${system}.t3-code;
           nightly = self.packages.${system}.t3-code-nightly;
+          orchestrator = self.packages.${system}.orchestrator;
         in
         {
           t3-cli = pkgs.runCommand "t3-cli-check" { nativeBuildInputs = [ pkgs.coreutils ]; } ''
-            for package in ${stable} ${nightly}; do
+            for package in ${stable} ${nightly} ${orchestrator}; do
               help="$(timeout 30 "$package/bin/t3" serve --help 2>&1)"
               grep -F 't3 serve' <<<"$help"
               grep -F 'Run the T3 Code server without opening a browser' <<<"$help"

@@ -14,4 +14,13 @@
       aarch64-darwin.hash = "sha256-v5DyfBUBIcTPEo+FZ6poLTB3mlZ8y7sf9EM09bELSgs=";
     };
   };
+
+  orchestrator = {
+    version = "0.0.43-preview.20260923.2177";
+    rev = "3e4ca4c532f9746f8ce62acfa80b8a6ea30e962b";
+    sources = {
+      x86_64-linux.hash = "sha256-/7iT8gM30M05KF2U5ZTWAsFZ+7IjNE11ZYkP1mzHpUA=";
+      aarch64-darwin.hash = "sha256-YninV88CWsRfUid5ZJcFVbpihgrbclCKWFwLiLDlQu0=";
+    };
+  };
 }

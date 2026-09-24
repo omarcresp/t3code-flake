@@ -23,14 +23,19 @@ jobs:
       changed: ${{ steps.latest.outputs.changed }}
       stable_changed: ${{ steps.latest.outputs.stable_changed }}
       nightly_changed: ${{ steps.latest.outputs.nightly_changed }}
+      orchestrator_changed: ${{ steps.latest.outputs.orchestrator_changed }}
       stable_version: ${{ steps.latest.outputs.stable_version }}
       nightly_version: ${{ steps.latest.outputs.nightly_version }}
+      orchestrator_version: ${{ steps.latest.outputs.orchestrator_version }}
     steps:
       - name: Checkout repository
         uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
         with:
           ref: ${{ github.ref_name }}
           fetch-depth: 1
+
+      - name: Test release selection
+        run: python3 -B -m unittest discover -s tests
 
       - name: Generate release metadata
         id: latest
@@ -40,44 +45,25 @@ jobs:
           set -euo pipefail
           RELEASE_NOTES_DIR=release-notes ./update.sh > releases.nix.new
 
-          stable_version="$(sed -n '/^  stable = {/,/^  };/s/^[[:space:]]*version = "\(.*\)";$/\1/p' releases.nix.new | head -n1)"
-          nightly_version="$(sed -n '/^  nightly = {/,/^  };/s/^[[:space:]]*version = "\(.*\)";$/\1/p' releases.nix.new | head -n1)"
-
-          if [[ -z "${stable_version}" || -z "${nightly_version}" ]]; then
-            echo "Failed to parse versions from generated releases.nix."
-            cat releases.nix.new
-            exit 1
-          fi
-
-          echo "stable_version=${stable_version}" >>"${GITHUB_OUTPUT}"
-          echo "nightly_version=${nightly_version}" >>"${GITHUB_OUTPUT}"
-
-          if cmp -s releases.nix releases.nix.new; then
-            echo "changed=false" >>"${GITHUB_OUTPUT}"
-            echo "stable_changed=false" >>"${GITHUB_OUTPUT}"
-            echo "nightly_changed=false" >>"${GITHUB_OUTPUT}"
-            exit 0
-          fi
-
-          sed -n '/^  stable = {/,/^  };/p' releases.nix > stable.current
-          sed -n '/^  stable = {/,/^  };/p' releases.nix.new > stable.new
-          sed -n '/^  nightly = {/,/^  };/p' releases.nix > nightly.current
-          sed -n '/^  nightly = {/,/^  };/p' releases.nix.new > nightly.new
-
-          if cmp -s stable.current stable.new; then
-            echo "stable_changed=false" >>"${GITHUB_OUTPUT}"
-          else
-            echo "stable_changed=true" >>"${GITHUB_OUTPUT}"
-          fi
-
-          if cmp -s nightly.current nightly.new; then
-            echo "nightly_changed=false" >>"${GITHUB_OUTPUT}"
-          else
-            echo "nightly_changed=true" >>"${GITHUB_OUTPUT}"
-          fi
-
+          changed=false
+          for channel in stable nightly orchestrator; do
+            version="$(sed -n "/^  ${channel} = {/,/^  };/s/^[[:space:]]*version = \"\(.*\)\";$/\1/p" releases.nix.new | head -n1)"
+            if [[ -z "${version}" ]]; then
+              echo "Failed to parse ${channel} version from generated releases.nix."
+              exit 1
+            fi
+            echo "${channel}_version=${version}" >>"${GITHUB_OUTPUT}"
+            sed -n "/^  ${channel} = {/,/^  };/p" releases.nix > "${channel}.current"
+            sed -n "/^  ${channel} = {/,/^  };/p" releases.nix.new > "${channel}.new"
+            if cmp -s "${channel}.current" "${channel}.new"; then
+              echo "${channel}_changed=false" >>"${GITHUB_OUTPUT}"
+            else
+              echo "${channel}_changed=true" >>"${GITHUB_OUTPUT}"
+              changed=true
+            fi
+          done
           mv releases.nix.new releases.nix
-          echo "changed=true" >>"${GITHUB_OUTPUT}"
+          echo "changed=${changed}" >>"${GITHUB_OUTPUT}"
 
       - name: Upload updated releases.nix
         if: steps.latest.outputs.changed == 'true'
@@ -127,6 +113,10 @@ jobs:
         if: needs.check-update.outputs.nightly_changed == 'true'
         run: nix build .#t3-code-nightly -L
 
+      - name: Build orchestrator package
+        if: needs.check-update.outputs.orchestrator_changed == 'true'
+        run: nix build .#orchestrator -L
+
   push:
     needs:
       - check-update
@@ -148,7 +138,7 @@ jobs:
         with:
           name: updated-releases
 
-      - name: Commit stable and nightly updates separately
+      - name: Commit channel updates separately
         run: |
           set -euo pipefail
           if git diff --quiet -- releases.nix; then
@@ -158,8 +148,10 @@ jobs:
 
           stable_changed='${{ needs.check-update.outputs.stable_changed }}'
           nightly_changed='${{ needs.check-update.outputs.nightly_changed }}'
+          orchestrator_changed='${{ needs.check-update.outputs.orchestrator_changed }}'
           stable_version='${{ needs.check-update.outputs.stable_version }}'
           nightly_version='${{ needs.check-update.outputs.nightly_version }}'
+          orchestrator_version='${{ needs.check-update.outputs.orchestrator_version }}'
 
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
@@ -199,6 +191,10 @@ jobs:
 
           if [[ "${nightly_changed}" == "true" ]]; then
             commit_channel nightly "${nightly_version}"
+          fi
+
+          if [[ "${orchestrator_changed}" == "true" ]]; then
+            commit_channel orchestrator "${orchestrator_version}"
           fi
 
           git push
