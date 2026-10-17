@@ -71,7 +71,7 @@
           src = pkgs.fetchurl (mkSource channel.release system);
           desktopPath = "$out/share/applications/${channel.desktopFileName}.desktop";
         in
-        pkgs.stdenv.mkDerivation {
+        pkgs.stdenv.mkDerivation (finalAttrs: {
           inherit (channel) pname;
           inherit version;
 
@@ -186,17 +186,21 @@
           '';
 
           postFixup = ''
+            # T3 downloads headless Chrome outside the patched AppImage.
+            # Pass its dependencies to child processes from both launchers.
             makeWrapper $out/libexec/${channel.libexecName}/t3code $out/bin/t3code \
               "''${gappsWrapperArgs[@]}" \
+              --prefix LD_LIBRARY_PATH : "${lib.makeLibraryPath finalAttrs.buildInputs}" \
               --set T3CODE_DISABLE_AUTO_UPDATE 1
 
             makeWrapper $out/libexec/${channel.libexecName}/t3code $out/bin/t3 \
+              --prefix LD_LIBRARY_PATH : "${lib.makeLibraryPath finalAttrs.buildInputs}" \
               --set ELECTRON_RUN_AS_NODE 1 \
               --add-flag $out/libexec/${channel.libexecName}/resources/app.asar/apps/server/dist/bin.mjs
           '';
 
           meta = mkMeta system channel;
-        };
+        });
 
       mkDarwinPackage =
         pkgs: channel:
