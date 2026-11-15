@@ -12,20 +12,14 @@
       releases = import ./releases.nix;
       repo = "pingdotgg/t3code";
 
-      mkUrl =
-        release: asset:
-        "https://github.com/${repo}/releases/download/v${release.version}/T3-Code-${release.version}-${asset}";
-
-      assetSuffixes = {
-        x86_64-linux = "x86_64.AppImage";
-        aarch64-darwin = "arm64.zip";
-      };
-
       mkSource =
         release: system:
-        release.sources.${system}
-        // {
-          url = mkUrl release assetSuffixes.${system};
+        let
+          source = release.sources.${system};
+        in
+        {
+          inherit (source) hash;
+          url = "https://github.com/${repo}/releases/download/v${release.version}/${source.file}";
         };
 
       supportedSystems = builtins.attrNames releases.stable.sources;

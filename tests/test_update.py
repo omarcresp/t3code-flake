@@ -9,16 +9,20 @@ import unittest
 ROOT = Path(__file__).resolve().parents[1]
 
 
-def release(version, complete=True):
+def release(version, complete=True, versioned_appimage=True):
+    if versioned_appimage:
+        appimage = f"T3-Code-{version}-x86_64.AppImage"
+    elif "nightly" in version:
+        appimage = "T3-Code-Nightly-x86_64.AppImage"
+    else:
+        appimage = "T3-Code-x86_64.AppImage"
+    names = ([appimage] if complete else []) + [f"T3-Code-{version}-arm64.zip"]
     return {
         "tag_name": "v" + version,
         "prerelease": "-" in version,
         "body": "Release notes for " + version,
         "html_url": "https://example.com/" + version,
-        "assets": [
-            {"name": f"T3-Code-{version}-{suffix}", "digest": "sha256:" + "ab" * 32}
-            for suffix in (["x86_64.AppImage", "arm64.zip"] if complete else ["arm64.zip"])
-        ],
+        "assets": [{"name": name, "digest": "sha256:" + "ab" * 32} for name in names],
     }
 
 
@@ -86,6 +90,38 @@ print((root / "releases.json").read_text())
                     self.assertIn('version = "1.0.0";', result.stdout)
                     self.assertIn('version = "1.0.1-nightly.20260923.1";', result.stdout)
                     self.assertIn("is not ready", result.stderr)
+
+    def test_accepts_version_free_appimage_names(self):
+        result, _ = self.run_update([
+            release("1.0.1-nightly.20260923.2", versioned_appimage=False),
+            release("1.0.1", versioned_appimage=False),
+        ])
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn('version = "1.0.1";', result.stdout)
+        self.assertIn('file = "T3-Code-x86_64.AppImage";', result.stdout)
+        self.assertIn('version = "1.0.1-nightly.20260923.2";', result.stdout)
+        self.assertIn('file = "T3-Code-Nightly-x86_64.AppImage";', result.stdout)
+        self.assertIn('file = "T3-Code-1.0.1-nightly.20260923.2-arm64.zip";', result.stdout)
+        self.assertNotIn("is not ready", result.stderr)
+
+    def test_keeps_versioned_stable_while_nightly_uses_new_names(self):
+        result, _ = self.run_update([
+            release("1.0.1-nightly.20260923.2", versioned_appimage=False),
+            release("1.0.1-nightly.20260923.1"),
+            release("1.0.0"),
+        ])
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn('file = "T3-Code-1.0.0-x86_64.AppImage";', result.stdout)
+        self.assertIn('file = "T3-Code-Nightly-x86_64.AppImage";', result.stdout)
+        self.assertNotIn("nightly.20260923.1", result.stdout)
+
+    def test_channel_names_do_not_cross(self):
+        nightly = release("1.0.1-nightly.20260923.2", versioned_appimage=False)
+        nightly["assets"][0]["name"] = "T3-Code-x86_64.AppImage"
+        result, _ = self.run_update([nightly, release("1.0.1-nightly.20260923.1"), release("1.0.0")])
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn('version = "1.0.1-nightly.20260923.1";', result.stdout)
+        self.assertIn("is not ready", result.stderr)
 
     def test_missing_channel_aborts_without_emitting_metadata(self):
         for version in ("1.0.0", "1.0.1-nightly.20260923.1"):

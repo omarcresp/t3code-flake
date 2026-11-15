@@ -25,6 +25,42 @@ to_sri() {
   fi
 }
 
+# Upstream names each platform's asset differently per channel. Candidates are
+# listed in preference order; readiness and hashing both use the first match.
+asset_defs='
+  def valid_digest:
+    type == "string"
+    and test("^sha256:[0-9a-fA-F]{64}$");
+
+  def version:
+    .tag_name | ltrimstr("v");
+
+  def candidate_names($channel; $system):
+    version as $version
+    | if $system == "x86_64-linux" then
+        [
+          (if $channel == "stable" then "T3-Code-x86_64.AppImage" else "T3-Code-Nightly-x86_64.AppImage" end),
+          # Releases before upstream PR #36306 (stable 0.1.9 and older) put the
+          # version in the AppImage name. Drop this once stable is past 0.1.9.
+          "T3-Code-\($version)-x86_64.AppImage"
+        ]
+      else
+        ["T3-Code-\($version)-arm64.zip"]
+      end;
+
+  def ready_asset($channel; $system):
+    . as $release
+    | first(
+        candidate_names($channel; $system)[] as $name
+        | $release.assets[]?
+        | select(.name == $name and (.digest | valid_digest))
+      );
+
+  def ready($channel):
+    [ready_asset($channel; "x86_64-linux"), ready_asset($channel; "aarch64-darwin")]
+    | length == 2;
+'
+
 select_ready_release() {
   local releases_json="$1"
   local channel="$2"
@@ -47,27 +83,7 @@ select_ready_release() {
   )"
 
   release_json="$(
-    jq -c --arg channel "${channel}" '
-      def valid_digest:
-        type == "string"
-        and test("^sha256:[0-9a-fA-F]{64}$");
-
-      def has_ready_asset($name):
-        any(
-          .assets[]?;
-          .name == $name
-          and (.digest | valid_digest)
-        );
-
-      def version:
-        .tag_name
-        | if startswith("v") then .[1:] else . end;
-
-      def ready:
-        version as $version
-        | has_ready_asset("T3-Code-\($version)-x86_64.AppImage")
-        and has_ready_asset("T3-Code-\($version)-arm64.zip");
-
+    jq -c --arg channel "${channel}" "${asset_defs}"'
       [
         .[]
         | select(
@@ -78,7 +94,7 @@ select_ready_release() {
               and (.tag_name | test("^v[0-9]+\\.[0-9]+\\.[0-9]+-" + $channel + "\\.[0-9]{8}\\.[0-9]+$"))
             end
           )
-        | select(ready)
+        | select(ready($channel))
       ][0] // empty
     ' <<<"${releases_json}"
   )"
@@ -109,49 +125,33 @@ write_release_notes() {
   jq -r '.html_url // ""' <<<"${release_json}" >"${RELEASE_NOTES_DIR}/${channel}.url"
 }
 
-asset_hash() {
+emit_source() {
   local release_json="$1"
   local channel="$2"
   local system="$3"
-  local version="$4"
-  local suffix="$5"
-  local asset_name="T3-Code-${version}-${suffix}"
-
   local asset_json
+
   asset_json="$(
-    jq -cr --arg name "${asset_name}" '
-      .assets[]
-      | select(.name == $name)
-      | select(.digest | type == "string" and test("^sha256:[0-9a-fA-F]{64}$"))
-    ' <<<"${release_json}" \
-      | head -n 1
+    jq -c --arg channel "${channel}" --arg system "${system}" "${asset_defs}"'
+      ready_asset($channel; $system) // empty
+    ' <<<"${release_json}"
   )"
   if [[ -z "${asset_json}" ]]; then
-    echo "Could not find ${channel} asset '${asset_name}' for system '${system}'." >&2
+    echo "Could not find a ${channel} asset for system '${system}'." >&2
     jq -r '.assets[].name' <<<"${release_json}" >&2
     exit 1
   fi
 
-  local digest
-  digest="$(jq -r '.digest' <<<"${asset_json}")"
-
-  if [[ -z "${digest}" || "${digest}" == "null" ]]; then
-    echo "Asset '${asset_name}' is missing the digest field." >&2
-    exit 1
-  fi
-
-  if [[ ! "${digest}" =~ ^sha256:[0-9a-fA-F]{64}$ ]]; then
-    echo "Unexpected digest format for '${asset_name}': ${digest}" >&2
-    exit 1
-  fi
-
-  to_sri "${digest}"
+  printf '      %s = {\n' "${system}"
+  printf '        file = "%s";\n' "$(jq -r '.name' <<<"${asset_json}")"
+  printf '        hash = "%s";\n' "$(to_sri "$(jq -r '.digest' <<<"${asset_json}")")"
+  printf '      };\n'
 }
 
 emit_channel() {
   local channel="$1"
   local release_json="$2"
-  local tag version x86_hash arm_hash
+  local tag version system
 
   tag="$(jq -r '.tag_name' <<<"${release_json}")"
   if [[ -z "${tag}" || "${tag}" == "null" ]]; then
@@ -160,14 +160,13 @@ emit_channel() {
   fi
 
   version="${tag#v}"
-  x86_hash="$(asset_hash "${release_json}" "${channel}" "x86_64-linux" "${version}" "x86_64.AppImage")"
-  arm_hash="$(asset_hash "${release_json}" "${channel}" "aarch64-darwin" "${version}" "arm64.zip")"
 
   printf '  %s = {\n' "${channel}"
   printf '    version = "%s";\n' "${version}"
   printf '    sources = {\n'
-  printf '      x86_64-linux.hash = "%s";\n' "${x86_hash}"
-  printf '      aarch64-darwin.hash = "%s";\n' "${arm_hash}"
+  for system in x86_64-linux aarch64-darwin; do
+    emit_source "${release_json}" "${channel}" "${system}"
+  done
   printf '    };\n'
   printf '  };\n'
 }
