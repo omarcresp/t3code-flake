@@ -14,15 +14,15 @@
   };
 
   nightly = {
-    version = "0.1.10-nightly.20261113.4643";
+    version = "0.1.10-nightly.20261114.4709";
     sources = {
       x86_64-linux = {
-        file = "T3-Code-0.1.10-nightly.20261113.4643-x86_64.AppImage";
-        hash = "sha256-4Ae5w57pzpfvm/mobcsR6lLwzLfxQpUkjl/zbmTiv2s=";
+        file = "T3-Code-Nightly-x86_64.AppImage";
+        hash = "sha256-khHlTD6ksw3yle/nkUINHciRh9p8XIgurmdMEh8E390=";
       };
       aarch64-darwin = {
-        file = "T3-Code-0.1.10-nightly.20261113.4643-arm64.zip";
-        hash = "sha256-FGhTda9mCzSta0ySA6ctnHqmx0k0uZFBUN0bLhrqC8k=";
+        file = "T3-Code-0.1.10-nightly.20261114.4709-arm64.zip";
+        hash = "sha256-noofqXEXJs4h7oD4RiQBXJPsHJOHmpsRuHYpnz98DMk=";
       };
     };
   };
