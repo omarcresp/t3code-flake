@@ -1,14 +1,14 @@
 {
   stable = {
-    version = "0.1.12";
+    version = "0.1.13";
     sources = {
       x86_64-linux = {
         file = "T3-Code-x86_64.AppImage";
-        hash = "sha256-ZrkVUVcd9tKbVctZApXt9BHP+WyVqP6z9Bw8pZXXIuI=";
+        hash = "sha256-2sG76ek8Gl+wlCMyvvqZhZf2oIYjKod2bvXYI1pE9W0=";
       };
       aarch64-darwin = {
-        file = "T3-Code-0.1.12-arm64.zip";
-        hash = "sha256-bMxS4Q2dQGeTjbfNU11Q2Bk4ZP6/oc+myEhbw6p9v7c=";
+        file = "T3-Code-0.1.13-arm64.zip";
+        hash = "sha256-f0b9KwfJDm/ttiP0clvEAwym6GzoL2mkha1JKMqJNQ0=";
       };
     };
   };
